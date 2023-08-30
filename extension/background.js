@@ -1,7 +1,7 @@
 // Create a context menu item
 chrome.contextMenus.create({
   id: "ask-chatgpt",
-  title: "Ask ChatGPT",
+  title: "Ask TwilioBot",
   contexts: ["all"],
 });
 
