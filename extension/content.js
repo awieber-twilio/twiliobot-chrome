@@ -35,9 +35,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     fetch("http://localhost:3000", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "text/plain",
+        // "Access-Control-Allow-Origin": "*",
+        // "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+        "Access-Control-Request-Method": "POST",
       },
-      body: JSON.stringify({ message: text }),
+      Body: text,
     })
       .then((response) => response.json())
       .then(async (data) => {
@@ -56,7 +59,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((error) => {
         restoreCursor();
         alert(
-          "Error. Make sure you're running the server by following the instructions on https://github.com/gragland/chatgpt-chrome-extension. Also make sure you don't have an adblocker preventing requests to localhost:3000."
+          "Error", error.message
         );
         throw new Error(error);
       });

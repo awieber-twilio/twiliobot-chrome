@@ -1,115 +1,42 @@
-import dotenv from "dotenv-safe";
-dotenv.config();
-import express from "express";
-import bodyParser from "body-parser";
-import cors from "cors";
-import { ChatGPTAPI } from "chatgpt";
-import { oraPromise } from "ora";
-import config from "./config.js";
+var express = require('express'),
+    request = require('request'),
+    bodyParser = require('body-parser'),
+    app = express();
 
-const app = express().use(cors()).use(bodyParser.json());
+var myLimit = typeof(process.argv[2]) != 'undefined' ? process.argv[2] : '100kb';
+console.log('Using limit: ', myLimit);
 
-const gptApi = new ChatGPTAPI({
-  apiKey: process.env.OPENAI_API_KEY
+app.use(bodyParser.json({limit: myLimit}));
+
+app.all('*', function (req, res, next) {
+
+    // Set CORS headers: allow all origins, methods, and headers: you may want to lock this down in a production environment
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, PUT, PATCH, POST, DELETE");
+    res.header("Access-Control-Allow-Headers", req.header('access-control-request-headers'));
+
+    if (req.method === 'OPTIONS') {
+        // CORS Preflight
+        res.status().send()
+    } else {
+        var targetURL = req.header('https://fc66-12-148-187-6.ngrok-free.app/twilio-bot'); // Target-URL ie. https://example.com or http://example.com
+        if (!targetURL) {
+            res.send(500, { error: 'There is no Target-Endpoint header in the request' });
+            return;
+        }
+        console.log(req.body);
+        request({ url: targetURL + req.url, method: req.method, json: req.body, headers: {'Authorization': req.header('Authorization')} },
+            function (error, response, body) {
+                if (error) {
+                    console.error('error: ' + response.statusCode)
+                }
+//                console.log(body);
+            }).pipe(res);
+    }
 });
 
-const Config = configure(config);
+app.set('port', process.env.PORT || 3000);
 
-class Conversation {
-  conversationID = null;
-  parentMessageID = null;
-
-  constructor() {}
-
-  async sendMessage(msg) {
-    const res = await gptApi.sendMessage(
-      msg,
-      this.conversationID && this.parentMessageID
-        ? {
-            conversationId: this.conversationID,
-            parentMessageId: this.parentMessageID,
-          }
-        : {}
-    );
-    
-    if (res.conversationId) {
-      this.conversationID = res.conversationId;
-    }
-    if (res.parentMessageId) {
-      this.parentMessageID = res.parentMessageId;
-    }
-
-    if (res.response) {
-      return res.response;
-    }
-    return res;
-  }
-}
-
-const conversation = new Conversation();
-
-app.post("/", async (req, res) => {
-  try {
-    const rawReply = await oraPromise(
-      conversation.sendMessage(req.body.message),
-      {
-        text: req.body.message,
-      }
-    );
-    const reply = await Config.parse(rawReply.text);
-    console.log(`----------\n${reply}\n----------`);
-    res.json({ reply });
-  } catch (error) {
-    console.log(error);
-    res.status(500);
-  }
+app.listen(app.get('port'), function () {
+    console.log('Proxy server listening on port ' + app.get('port'));
 });
-
-async function start() {
-  await oraPromise(Config.train(), {
-    text: `Training ChatGPT (${Config.rules.length} plugin rules)`,
-  });
-  await oraPromise(
-    new Promise((resolve) => app.listen(3000, () => resolve())),
-    {
-      text: `You may now use the extension`,
-    }
-  );
-}
-
-function configure({ plugins, ...opts }) {
-  let rules = [];
-  let parsers = [];
-
-  // Collect rules and parsers from all plugins
-  for (const plugin of plugins) {
-    if (plugin.rules) {
-      rules = rules.concat(plugin.rules);
-    }
-    if (plugin.parse) {
-      parsers.push(plugin.parse);
-    }
-  }
-
-  // Send ChatGPT a training message that includes all plugin rules
-  const train = () => {
-    if (!rules.length) return;
-
-    const message = `
-      Please follow these rules when replying to me:
-      ${rules.map((rule) => `\n- ${rule}`)}
-    `;
-    return conversation.sendMessage(message);
-  };
-
-  // Run the ChatGPT response through all plugin parsers
-  const parse = async (reply) => {
-    for (const parser of parsers) {
-      reply = await parser(reply);
-    }
-    return reply;
-  };
-  return { train, parse, rules, ...opts };
-}
-
-start();
